@@ -1,43 +1,4 @@
-<script type="text/javascript">
-        var gk_isXlsx = false;
-        var gk_xlsxFileLookup = {};
-        var gk_fileData = {};
-        function filledCell(cell) {
-          return cell !== '' && cell != null;
-        }
-        function loadFileData(filename) {
-        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
-            try {
-                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
-                var firstSheetName = workbook.SheetNames[0];
-                var worksheet = workbook.Sheets[firstSheetName];
-
-                // Convert sheet to JSON to filter blank rows
-                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
-                // Filter out blank rows (rows where all cells are empty, null, or undefined)
-                var filteredData = jsonData.filter(row => row.some(filledCell));
-
-                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
-                var headerRowIndex = filteredData.findIndex((row, index) =>
-                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
-                );
-                // Fallback
-                if (headerRowIndex === -1 || headerRowIndex > 25) {
-                  headerRowIndex = 0;
-                }
-
-                // Convert filtered JSON back to CSV
-                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
-                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
-                return csv;
-            } catch (e) {
-                console.error(e);
-                return "";
-            }
-        }
-        return gk_fileData[filename] || "";
-        }
-        </script><!DOCTYPE html>
+<!DOCTYPE html>
 <html>
 <head>
   <title>Fruit-sort-out-Project</title>
@@ -45,6 +6,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
   <script src="https://unpkg.com/mqtt@5.0.5/dist/mqtt.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -80,17 +42,55 @@
   <div id="label-container"></div>
 
   <script type="text/javascript">
+    var gk_isXlsx = false;
+    var gk_xlsxFileLookup = {};
+    var gk_fileData = {};
+    function filledCell(cell) {
+      return cell !== '' && cell != null;
+    }
+    function loadFileData(filename) {
+      if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+        try {
+          var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+          var firstSheetName = workbook.SheetNames[0];
+          var worksheet = workbook.Sheets[firstSheetName];
+
+          // Convert sheet to JSON to filter blank rows
+          var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+          // Filter out blank rows (rows where all cells are empty, null, or undefined)
+          var filteredData = jsonData.filter(row => row.some(filledCell));
+
+          // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+          var headerRowIndex = filteredData.findIndex((row, index) =>
+            row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+          );
+          // Fallback
+          if (headerRowIndex === -1 || headerRowIndex > 25) {
+            headerRowIndex = 0;
+          }
+
+          // Convert filtered JSON back to CSV
+          var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex));
+          csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+          return csv;
+        } catch (e) {
+          console.error(e);
+          return "";
+        }
+      }
+      return gk_fileData[filename] || "";
+    }
+
     const URL = "https://teachablemachine.withgoogle.com/models/hzwESGvd2/";
-    const MQTT_BROKER = "1d153effa1824cf08f7f758293b39518.s1.eu.hivemq.cloud"; // Corrected HiveMQ broker hostname
-    const MQTT_PORT = 8884; // WebSocket secure port
+    const MQTT_BROKER = "1d153effa1824cf08f7f758293b39518.s1.eu.hivemq.cloud";
+    const MQTT_PORT = 8884;
     const MQTT_TOPIC = "teachablemachine/predictions";
-    const MQTT_USERNAME = "hivemq.webclient.1756683663297"; // Your HiveMQ username
-    const MQTT_PASSWORD = "06!orxF4EnGX@v,J8.Yb"; // Your HiveMQ password
+    const MQTT_USERNAME = "hivemq.webclient.1756683663297";
+    const MQTT_PASSWORD = "06!orxF4EnGX@v,J8.Yb";
 
     let model, webcam, labelContainer, maxPredictions, mqttClient;
 
     async function init(facingMode) {
-      // Check for HTTPS
       if (window.location.protocol !== 'https:') {
         document.getElementById("label-container").innerText = "Error: This page must be served over HTTPS for webcam access.";
         return;
@@ -99,12 +99,11 @@
       const modelURL = URL + "model.json";
       const metadataURL = URL + "metadata.json";
 
-      // Initialize MQTT client with authentication
       try {
         mqttClient = mqtt.connect(`wss://${MQTT_BROKER}:${MQTT_PORT}/mqtt`, {
           username: MQTT_USERNAME,
           password: MQTT_PASSWORD,
-          connectTimeout: 5000 // 5-second timeout for connection
+          connectTimeout: 5000
         });
         mqttClient.on('connect', () => {
           console.log('Connected to HiveMQ broker');
@@ -120,18 +119,15 @@
         return;
       }
 
-      // Initialize Teachable Machine model and webcam
       try {
         model = await tmImage.load(modelURL, metadataURL);
         maxPredictions = model.getTotalClasses();
 
         webcam = new tmImage.Webcam(224, 224, false);
         try {
-          // Try the specified facingMode, fall back to any camera if it fails
           await webcam.setup({ facingMode: facingMode }).catch(async (err) => {
             console.warn(`Failed to setup webcam with facingMode ${facingMode}:`, err);
             try {
-              // Fallback to any available camera
               await webcam.setup();
               console.log("Webcam initialized with fallback mode");
             } catch (fallbackErr) {
@@ -188,14 +184,17 @@
         });
       }
 
-      // Publish predictions to HiveMQ
-      if (mqttClient && mqttClient.connected) {
+      // Filter predictions with probability > 0.9 for MQTT publishing
+      const highConfidencePredictions = predictions.filter(pred => parseFloat(pred.probability) > 0.9);
+
+      // Publish high-confidence predictions to HiveMQ
+      if (mqttClient && mqttClient.connected && highConfidencePredictions.length > 0) {
         try {
-          mqttClient.publish(MQTT_TOPIC, JSON.stringify(predictions), { qos: 1 }, (err) => {
+          mqttClient.publish(MQTT_TOPIC, JSON.stringify(highConfidencePredictions), { qos: 1 }, (err) => {
             if (err) {
               console.error('Failed to publish to MQTT:', err);
             } else {
-              console.log('Published predictions to:', MQTT_TOPIC);
+              console.log('Published high-confidence predictions to:', MQTT_TOPIC, highConfidencePredictions);
             }
           });
         } catch (e) {
