@@ -74,9 +74,11 @@
     }
 
     const URL = "https://teachablemachine.withgoogle.com/models/hzwESGvd2/";
-    const MQTT_BROKER = "broker.hivemq.com";
-    const MQTT_PORT = 1883;
+    const MQTT_BROKER = "1d153effa1824cf08f7f758293b39518.s1.eu.hivemq.cloud";
+    const MQTT_PORT = 8884;
     const MQTT_TOPIC = "teachablemachine/predictions";
+    const MQTT_USERNAME = "hivemq.webclient.1756683663297";
+    const MQTT_PASSWORD = "06!orxF4EnGX@v,J8.Yb";
 
     let model, webcam, labelContainer, maxPredictions, mqttClient;
 
@@ -90,7 +92,9 @@
       const metadataURL = URL + "metadata.json";
 
       try {
-        mqttClient = mqtt.connect(`ws://${MQTT_BROKER}:${MQTT_PORT}/mqtt`, {
+        mqttClient = mqtt.connect(`wss://${MQTT_BROKER}:${MQTT_PORT}/mqtt`, {
+          username: MQTT_USERNAME,
+          password: MQTT_PASSWORD,
           connectTimeout: 5000
         });
         mqttClient.on('connect', () => {
