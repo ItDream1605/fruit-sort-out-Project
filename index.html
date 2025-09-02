@@ -54,22 +54,14 @@
           var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
           var firstSheetName = workbook.SheetNames[0];
           var worksheet = workbook.Sheets[firstSheetName];
-
-          // Convert sheet to JSON to filter blank rows
           var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
-          // Filter out blank rows (rows where all cells are empty, null, or undefined)
           var filteredData = jsonData.filter(row => row.some(filledCell));
-
-          // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
           var headerRowIndex = filteredData.findIndex((row, index) =>
             row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
           );
-          // Fallback
           if (headerRowIndex === -1 || headerRowIndex > 25) {
             headerRowIndex = 0;
           }
-
-          // Convert filtered JSON back to CSV
           var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex));
           csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
           return csv;
@@ -82,11 +74,9 @@
     }
 
     const URL = "https://teachablemachine.withgoogle.com/models/hzwESGvd2/";
-    const MQTT_BROKER = "1d153effa1824cf08f7f758293b39518.s1.eu.hivemq.cloud";
-    const MQTT_PORT = 8884;
+    const MQTT_BROKER = "broker.hivemq.com";
+    const MQTT_PORT = 1883;
     const MQTT_TOPIC = "teachablemachine/predictions";
-    const MQTT_USERNAME = "hivemq.webclient.1756683663297";
-    const MQTT_PASSWORD = "06!orxF4EnGX@v,J8.Yb";
 
     let model, webcam, labelContainer, maxPredictions, mqttClient;
 
@@ -100,9 +90,7 @@
       const metadataURL = URL + "metadata.json";
 
       try {
-        mqttClient = mqtt.connect(`wss://${MQTT_BROKER}:${MQTT_PORT}/mqtt`, {
-          username: MQTT_USERNAME,
-          password: MQTT_PASSWORD,
+        mqttClient = mqtt.connect(`ws://${MQTT_BROKER}:${MQTT_PORT}/mqtt`, {
           connectTimeout: 5000
         });
         mqttClient.on('connect', () => {
@@ -184,10 +172,7 @@
         });
       }
 
-      // Filter predictions with probability > 0.9 for MQTT publishing
       const highConfidencePredictions = predictions.filter(pred => parseFloat(pred.probability) > 0.9);
-
-      // Publish high-confidence predictions to HiveMQ
       if (mqttClient && mqttClient.connected && highConfidencePredictions.length > 0) {
         try {
           mqttClient.publish(MQTT_TOPIC, JSON.stringify(highConfidencePredictions), { qos: 1 }, (err) => {
