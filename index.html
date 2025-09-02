@@ -46,8 +46,6 @@
     const MQTT_PORT = 8884;
     const MQTT_TOPIC = "teachablemachine/predictions";
     const MQTT_CLIENT_ID = "clientId-DEyGpmTwH4";
-    const MQTT_USERNAME = "ItDream";
-    const MQTT_PASSWORD = "77421511";
 
     let model, webcam, labelContainer, maxPredictions, mqttClient;
 
@@ -63,8 +61,6 @@
       try {
         mqttClient = mqtt.connect(`wss://${MQTT_BROKER}:${MQTT_PORT}/mqtt`, {
           clientId: MQTT_CLIENT_ID,
-          username: MQTT_USERNAME,
-          password: MQTT_PASSWORD,
           connectTimeout: 5000
         });
         mqttClient.on('connect', () => {
