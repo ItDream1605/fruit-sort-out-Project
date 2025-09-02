@@ -1,12 +1,11 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Fruit-sort-out-Project</title>
+  <title>Teachable Machine Image Model (Mobile)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
   <script src="https://unpkg.com/mqtt@5.0.5/dist/mqtt.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -34,7 +33,7 @@
   </style>
 </head>
 <body>
-  <div>Fruit-sort-out-Project</div>
+  <div>Teachable Machine Image Model (Mobile)</div>
   <button type="button" onclick="init('environment')">Start (Back Camera)</button>
   <button type="button" onclick="init('user')">Start (Front Camera)</button>
   <button type="button" onclick="stop()">Stop</button>
@@ -42,42 +41,13 @@
   <div id="label-container"></div>
 
   <script type="text/javascript">
-    var gk_isXlsx = false;
-    var gk_xlsxFileLookup = {};
-    var gk_fileData = {};
-    function filledCell(cell) {
-      return cell !== '' && cell != null;
-    }
-    function loadFileData(filename) {
-      if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
-        try {
-          var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
-          var firstSheetName = workbook.SheetNames[0];
-          var worksheet = workbook.Sheets[firstSheetName];
-          var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
-          var filteredData = jsonData.filter(row => row.some(filledCell));
-          var headerRowIndex = filteredData.findIndex((row, index) =>
-            row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
-          );
-          if (headerRowIndex === -1 || headerRowIndex > 25) {
-            headerRowIndex = 0;
-          }
-          var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex));
-          csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
-          return csv;
-        } catch (e) {
-          console.error(e);
-          return "";
-        }
-      }
-      return gk_fileData[filename] || "";
-    }
-
-    const URL = "https://teachablemachine.withgoogle.com/models/hzwESGvd2/";
+    const URL = "https://teachablemachine.withgoogle.com/models/hGmOXhF9c/";
     const MQTT_BROKER = "mqtt-dashboard.com";
     const MQTT_PORT = 8884;
     const MQTT_TOPIC = "teachablemachine/predictions";
-    const MQTT_CLIENT_ID = "clientId-UC7chzUVle";
+    const MQTT_CLIENT_ID = "clientId-DEyGpmTwH4";
+    const MQTT_USERNAME = "ItDream";
+    const MQTT_PASSWORD = "77421511";
 
     let model, webcam, labelContainer, maxPredictions, mqttClient;
 
@@ -93,6 +63,8 @@
       try {
         mqttClient = mqtt.connect(`wss://${MQTT_BROKER}:${MQTT_PORT}/mqtt`, {
           clientId: MQTT_CLIENT_ID,
+          username: MQTT_USERNAME,
+          password: MQTT_PASSWORD,
           connectTimeout: 5000
         });
         mqttClient.on('connect', () => {
@@ -133,7 +105,7 @@
           window.requestAnimationFrame(loop);
         } catch (e) {
           console.error("Webcam setup failed:", e);
-          document.getElementById("label-container").innerText = e.message;
+          document.getElementById("label-container").innerText = "Error: " + e.message;
           if (mqttClient && mqttClient.connected) {
             mqttClient.end();
           }
