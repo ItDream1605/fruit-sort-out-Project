@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Teachable Machine Image Model (Mobile)</title>
+  <title>Teachable Machine Image Model with MQTT (Mobile)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
-  <script src="https://unpkg.com/mqtt@5.0.5/dist/mqtt.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -33,7 +33,7 @@
   </style>
 </head>
 <body>
-  <div>Teachable Machine Image Model (Mobile)</div>
+  <div>Teachable Machine Image Model with MQTT (Mobile)</div>
   <button type="button" onclick="init('environment')">Start (Back Camera)</button>
   <button type="button" onclick="init('user')">Start (Front Camera)</button>
   <button type="button" onclick="stop()">Stop</button>
@@ -42,77 +42,62 @@
 
   <script type="text/javascript">
     const URL = "https://teachablemachine.withgoogle.com/models/hGmOXhF9c/";
-    const MQTT_BROKER = "mqtt-dashboard.com";
-    const MQTT_PORT = 8884;
+    const MQTT_BROKER_HOST = "mqtt-dashboard.com";
+    const MQTT_BROKER_PORT = 8884;
+    const MQTT_CLIENT_ID = "clientId-WJF4VLEoSI";
     const MQTT_TOPIC = "teachablemachine/predictions";
-    const MQTT_CLIENT_ID = "clientId-2TED7lTLII";
 
     let model, webcam, labelContainer, maxPredictions, mqttClient;
 
-    async function init(facingMode) {
-      if (window.location.protocol !== 'https:') {
-        document.getElementById("label-container").innerText = "Error: This page must be served over HTTPS for webcam access.";
-        return;
-      }
+    // Initialize MQTT client
+    function initMQTT() {
+      mqttClient = new Paho.MQTT.Client(MQTT_BROKER_HOST, Number(MQTT_BROKER_PORT), "/mqtt", MQTT_CLIENT_ID);
 
+      mqttClient.onConnectionLost = (responseObject) => {
+        if (responseObject.errorCode !== 0) {
+          console.error("MQTT connection lost:", responseObject.errorMessage);
+          document.getElementById("label-container").innerText = "MQTT Connection Lost: " + responseObject.errorMessage;
+        }
+      };
+
+      mqttClient.onConnected = () => {
+        console.log('Connected to mqtt-dashboard.com broker');
+      };
+
+      mqttClient.connect({
+        useSSL: true,
+        onSuccess: () => {
+          console.log('MQTT connection established');
+        },
+        onFailure: (error) => {
+          console.error('MQTT connection failed:', error.errorMessage);
+          document.getElementById("label-container").innerText = "MQTT Error: " + error.errorMessage;
+        }
+      });
+    }
+
+    async function init(facingMode) {
       const modelURL = URL + "model.json";
       const metadataURL = URL + "metadata.json";
 
-      try {
-        mqttClient = mqtt.connect(`wss://${MQTT_BROKER}:${MQTT_PORT}/mqtt`, {
-          clientId: MQTT_CLIENT_ID,
-          connectTimeout: 5000
-        });
-        mqttClient.on('connect', () => {
-          console.log('Connected to HiveMQ broker');
-          document.getElementById("label-container").innerText = "Connected to MQTT broker";
-        });
-        mqttClient.on('error', (err) => {
-          console.error('MQTT connection error:', err);
-          document.getElementById("label-container").innerText = "MQTT Error: " + err.message;
-        });
-      } catch (e) {
-        console.error('MQTT setup failed:', e);
-        document.getElementById("label-container").innerText = "MQTT Error: " + e.message;
-        return;
-      }
+      // Initialize MQTT client
+      initMQTT();
 
-      try {
-        model = await tmImage.load(modelURL, metadataURL);
-        maxPredictions = model.getTotalClasses();
+      model = await tmImage.load(modelURL, metadataURL);
+      maxPredictions = model.getTotalClasses();
 
-        webcam = new tmImage.Webcam(224, 224, false);
-        try {
-          await webcam.setup({ facingMode: facingMode }).catch(async (err) => {
-            console.warn(`Failed to setup webcam with facingMode ${facingMode}:`, err);
-            try {
-              await webcam.setup();
-              console.log("Webcam initialized with fallback mode");
-            } catch (fallbackErr) {
-              console.error("Webcam fallback setup failed:", fallbackErr);
-              throw new Error(`Webcam setup failed: ${fallbackErr.message}. Ensure camera permissions are granted and a webcam is available.`);
-            }
-          });
-          await webcam.play();
-          if (!webcam.canvas) {
-            throw new Error("Webcam canvas is not initialized");
-          }
-          console.log("Webcam initialized, width:", webcam.canvas.width, "facingMode:", facingMode);
-          window.requestAnimationFrame(loop);
-        } catch (e) {
-          console.error("Webcam setup failed:", e);
-          document.getElementById("label-container").innerText = "Error: " + e.message;
-          if (mqttClient && mqttClient.connected) {
-            mqttClient.end();
-          }
-          return;
+      webcam = new tmImage.Webcam(224, 224, false);
+      try {
+        await webcam.setup({ facingMode: facingMode });
+        await webcam.play();
+        if (!webcam.canvas) {
+          throw new Error("Webcam canvas is not initialized");
         }
+        console.log("Webcam initialized, width:", webcam.canvas.width, "facingMode:", facingMode);
+        window.requestAnimationFrame(loop);
       } catch (e) {
-        console.error("Model loading failed:", e);
-        document.getElementById("label-container").innerText = "Model Error: " + e.message;
-        if (mqttClient && mqttClient.connected) {
-          mqttClient.end();
-        }
+        console.error("Webcam setup failed:", e);
+        document.getElementById("label-container").innerText = "Error: " + e.message;
         return;
       }
 
@@ -132,28 +117,19 @@
 
     async function predict() {
       const prediction = await model.predict(webcam.canvas);
-      let predictions = [];
       for (let i = 0; i < maxPredictions; i++) {
         const classPrediction = prediction[i].className + ": " + prediction[i].probability.toFixed(2);
         labelContainer.childNodes[i].innerHTML = classPrediction;
-        predictions.push({
-          className: prediction[i].className,
-          probability: prediction[i].probability.toFixed(2)
-        });
-      }
 
-      const highConfidencePredictions = predictions.filter(pred => parseFloat(pred.probability) > 0.9);
-      if (mqttClient && mqttClient.connected && highConfidencePredictions.length > 0) {
-        try {
-          mqttClient.publish(MQTT_TOPIC, JSON.stringify(highConfidencePredictions), { qos: 1 }, (err) => {
-            if (err) {
-              console.error('Failed to publish to MQTT:', err);
-            } else {
-              console.log('Published high-confidence predictions to:', MQTT_TOPIC, highConfidencePredictions);
-            }
-          });
-        } catch (e) {
-          console.error('MQTT publish error:', e);
+        // Publish prediction to MQTT
+        if (mqttClient && mqttClient.isConnected()) {
+          const message = new Paho.MQTT.Message(JSON.stringify({
+            className: prediction[i].className,
+            probability: prediction[i].probability.toFixed(2),
+            timestamp: new Date().toISOString()
+          }));
+          message.destinationName = MQTT_TOPIC;
+          mqttClient.send(message);
         }
       }
     }
@@ -164,10 +140,8 @@
         document.getElementById("webcam-container").innerHTML = '';
         document.getElementById("label-container").innerHTML = '';
       }
-      if (mqttClient && mqttClient.connected) {
-        mqttClient.end(() => {
-          console.log('Disconnected from HiveMQ broker');
-        });
+      if (mqttClient) {
+        mqttClient.disconnect();
       }
     }
   </script>
