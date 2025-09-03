@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+  <script src="https://unpkg.com/mqtt@5.7.0/dist/mqtt.min.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -42,37 +42,25 @@
 
   <script type="text/javascript">
     const URL = "https://teachablemachine.withgoogle.com/models/hGmOXhF9c/";
-    const MQTT_BROKER_HOST = "mqtt-dashboard.com";
-    const MQTT_BROKER_PORT = 8884;
-    const MQTT_CLIENT_ID = "clientId-WJF4VLEoSI";
-    const MQTT_TOPIC = "teachablemachine/predictions";
+    const MQTT_BROKER = "wss://broker.hivemq.com:8884/mqtt";
+    const MQTT_TOPIC = "teachable/image/predictions";
 
-    let model, webcam, labelContainer, maxPredictions, mqttClient;
+    let model, webcam, labelContainer, maxPredictions, client;
 
     // Initialize MQTT client
     function initMQTT() {
-      mqttClient = new Paho.MQTT.Client(MQTT_BROKER_HOST, Number(MQTT_BROKER_PORT), "/mqtt", MQTT_CLIENT_ID);
+      client = mqtt.connect(MQTT_BROKER, {
+        clientId: 'web_client_' + Math.random().toString(16).substr(2, 8),
+        keepalive: 60,
+      });
 
-      mqttClient.onConnectionLost = (responseObject) => {
-        if (responseObject.errorCode !== 0) {
-          console.error("MQTT connection lost:", responseObject.errorMessage);
-          document.getElementById("label-container").innerText = "MQTT Connection Lost: " + responseObject.errorMessage;
-        }
-      };
+      client.on('connect', () => {
+        console.log('Connected to HiveMQ broker');
+      });
 
-      mqttClient.onConnected = () => {
-        console.log('Connected to mqtt-dashboard.com broker');
-      };
-
-      mqttClient.connect({
-        useSSL: true,
-        onSuccess: () => {
-          console.log('MQTT connection established');
-        },
-        onFailure: (error) => {
-          console.error('MQTT connection failed:', error.errorMessage);
-          document.getElementById("label-container").innerText = "MQTT Error: " + error.errorMessage;
-        }
+      client.on('error', (err) => {
+        console.error('MQTT connection error:', err);
+        document.getElementById("label-container").innerText = "MQTT Error: " + err.message;
       });
     }
 
@@ -80,12 +68,14 @@
       const modelURL = URL + "model.json";
       const metadataURL = URL + "metadata.json";
 
-      // Initialize MQTT client
+      // Initialize MQTT
       initMQTT();
 
+      // Load Teachable Machine model
       model = await tmImage.load(modelURL, metadataURL);
       maxPredictions = model.getTotalClasses();
 
+      // Setup Webcam
       webcam = new tmImage.Webcam(224, 224, false);
       try {
         await webcam.setup({ facingMode: facingMode });
@@ -117,20 +107,31 @@
 
     async function predict() {
       const prediction = await model.predict(webcam.canvas);
+      let highestPrediction = { className: '', probability: 0 };
+
+      // Update UI and find highest prediction
       for (let i = 0; i < maxPredictions; i++) {
         const classPrediction = prediction[i].className + ": " + prediction[i].probability.toFixed(2);
         labelContainer.childNodes[i].innerHTML = classPrediction;
-
-        // Publish prediction to MQTT
-        if (mqttClient && mqttClient.isConnected()) {
-          const message = new Paho.MQTT.Message(JSON.stringify({
-            className: prediction[i].className,
-            probability: prediction[i].probability.toFixed(2),
-            timestamp: new Date().toISOString()
-          }));
-          message.destinationName = MQTT_TOPIC;
-          mqttClient.send(message);
+        if (prediction[i].probability > highestPrediction.probability) {
+          highestPrediction = prediction[i];
         }
+      }
+
+      // Publish highest prediction to MQTT
+      if (client && client.connected && highestPrediction.probability > 0) {
+        const message = JSON.stringify({
+          className: highestPrediction.className,
+          probability: highestPrediction.probability.toFixed(2),
+          timestamp: new Date().toISOString()
+        });
+        client.publish(MQTT_TOPIC, message, { qos: 0 }, (err) => {
+          if (err) {
+            console.error('MQTT publish error:', err);
+          } else {
+            console.log('Published to MQTT:', message);
+          }
+        });
       }
     }
 
@@ -140,8 +141,10 @@
         document.getElementById("webcam-container").innerHTML = '';
         document.getElementById("label-container").innerHTML = '';
       }
-      if (mqttClient) {
-        mqttClient.disconnect();
+      if (client && client.connected) {
+        client.end(() => {
+          console.log('Disconnected from MQTT broker');
+        });
       }
     }
   </script>
