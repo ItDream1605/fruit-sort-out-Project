@@ -47,20 +47,32 @@
 
     let model, webcam, labelContainer, maxPredictions, client;
 
-    // Initialize MQTT client
     function initMQTT() {
       client = mqtt.connect(MQTT_BROKER, {
         clientId: 'web_client_' + Math.random().toString(16).substr(2, 8),
         keepalive: 60,
+        reconnectPeriod: 1000,
+        connectTimeout: 5000
       });
 
       client.on('connect', () => {
         console.log('Connected to HiveMQ broker');
+        document.getElementById("label-container").innerText = "MQTT Connected";
       });
 
       client.on('error', (err) => {
         console.error('MQTT connection error:', err);
         document.getElementById("label-container").innerText = "MQTT Error: " + err.message;
+      });
+
+      client.on('reconnect', () => {
+        console.log('Attempting to reconnect to MQTT broker...');
+        document.getElementById("label-container").innerText = "MQTT Reconnecting...";
+      });
+
+      client.on('close', () => {
+        console.log('MQTT connection closed');
+        document.getElementById("label-container").innerText = "MQTT Disconnected";
       });
     }
 
@@ -68,14 +80,11 @@
       const modelURL = URL + "model.json";
       const metadataURL = URL + "metadata.json";
 
-      // Initialize MQTT
       initMQTT();
 
-      // Load Teachable Machine model
       model = await tmImage.load(modelURL, metadataURL);
       maxPredictions = model.getTotalClasses();
 
-      // Setup Webcam
       webcam = new tmImage.Webcam(224, 224, false);
       try {
         await webcam.setup({ facingMode: facingMode });
@@ -109,7 +118,6 @@
       const prediction = await model.predict(webcam.canvas);
       let highestPrediction = { className: '', probability: 0 };
 
-      // Update UI and find highest prediction
       for (let i = 0; i < maxPredictions; i++) {
         const classPrediction = prediction[i].className + ": " + prediction[i].probability.toFixed(2);
         labelContainer.childNodes[i].innerHTML = classPrediction;
@@ -118,8 +126,7 @@
         }
       }
 
-      // Publish highest prediction to MQTT
-      if (client && client.connected && highestPrediction.probability > 0) {
+      if (client && client.connected && highestPrediction.probability > 0.8) {
         const message = JSON.stringify({
           className: highestPrediction.className,
           probability: highestPrediction.probability.toFixed(2),
