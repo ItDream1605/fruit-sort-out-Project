@@ -30,6 +30,11 @@
       font-size: 1em;
       margin: 5px;
     }
+    .mqtt-sent {
+      color: green;
+      font-weight: bold;
+      margin-top: 10px;
+    }
   </style>
 </head>
 <body>
@@ -137,6 +142,15 @@
             console.error('MQTT publish error:', err);
           } else {
             console.log('Published to MQTT:', message);
+            const sentMessage = document.createElement("div");
+            sentMessage.className = "mqtt-sent";
+            sentMessage.innerText = "Message sent to MQTT";
+            labelContainer.appendChild(sentMessage);
+            setTimeout(() => {
+              if (sentMessage.parentNode) {
+                sentMessage.parentNode.removeChild(sentMessage);
+              }
+            }, 2000); // Remove after 2 seconds
           }
         });
       }
