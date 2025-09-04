@@ -273,7 +273,7 @@
                 <div style="height: 8px"></div>
                 <div class="kv">
                     <div>Broker</div><div><code id="cfg-broker">wss://broker.hivemq.com:8884/mqtt</code></div>
-                    <div>Topic</div><div><code id="cfg-topic">Opzaa1</code></div>
+                    <div>Topic</div><div><code id="cfg-topic">fruit1</code></div>
                     <div>Client ID</div><div><code id="cfg-client">(will set on connect)</code></div>
                 </div>
             </div>
@@ -475,9 +475,18 @@
                 row.firstChild.textContent = `${p.className}: ${p.probability.toFixed(2)}`;
             }
             let best = preds[0];
-            for (let i = 1; i < preds.length; i++)
+            for (let i = 1; i < preds.length; i++) {
                 if (preds[i].probability > best.probability) best = preds[i];
+            }
             const now = Date.now();
+            // Check if Class4 has probability > 0
+            const class4 = preds.find(p => p.className === 'Class4');
+            if (class4 && class4.probability > 0) {
+                log('Publish skipped: Class4 probability > 0');
+                dot($('#dot-loop'), 'err');
+                return;
+            }
+            // Proceed with publishing if Class4 probability is 0 or Class4 is not present
             if (best.probability >= CONF_THRESHOLD && now - lastSentAt >= PUBLISH_DEBOUNCE_MS) {
                 lastSentAt = now;
                 const ok = safePublish(best.className);
@@ -537,4 +546,3 @@
     </script>
 </body>
 </html>
-
